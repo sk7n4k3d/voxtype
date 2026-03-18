@@ -1,8 +1,160 @@
-# Voxtype
+# Voxtype (Fork sk7n4k3d)
+
+> Fork personnel avec support serveur Whisper distant + fix KDE Wayland AZERTY
 
 [![Voxtype - Voice to Text for Linux](website/images/og-preview.png)](https://voxtype.io)
 
-**[voxtype.io](https://voxtype.io)**
+**Upstream : [voxtype.io](https://voxtype.io)** | **Fork : [github.com/sk7n4k3d/voxtype](https://github.com/sk7n4k3d/voxtype)**
+
+---
+
+## Modifications de ce fork
+
+### Mode Remote (serveur Whisper distant)
+
+Au lieu de faire tourner Whisper en local, ce fork envoie l'audio à un serveur [faster-whisper-server](https://github.com/fedirz/faster-whisper-server) distant via l'API OpenAI-compatible.
+
+**Avantages :**
+- **11x plus rapide** — transcription en 0.34s au lieu de 3.8s (GPU distant RTX 4060 vs GPU local Vulkan)
+- **Pas de modèle local** — pas besoin de télécharger 3 Go de modèle sur chaque PC
+- **Compilation légère** — `whisper-rs` est optionnel (feature flag `local-whisper`)
+
+### Fix KDE Wayland + AZERTY
+
+Le mode de sortie texte utilise `wl-copy` + `ydotool Shift+Insert` au lieu de `ydotool type` :
+- **AZERTY correct** — plus de `q` au lieu de `a`, plus de `:` au lieu de `.`
+- **Collage instantané** — pas de délai caractère par caractère
+- **Unicode complet** — accents, caractères spéciaux, emojis
+
+### Feature flag `local-whisper`
+
+`whisper-rs` (la lib C++ de Whisper) est maintenant optionnelle :
+- **Avec** : `cargo build --release` (compile whisper.cpp, nécessite les headers C++)
+- **Sans** : `cargo build --release --no-default-features` (mode remote uniquement, compilation rapide)
+
+---
+
+## Installation rapide (mode remote)
+
+### Prérequis
+- Un serveur [faster-whisper-server](https://github.com/fedirz/faster-whisper-server) accessible sur le réseau
+- Rust 1.88+ (`rustup toolchain install 1.88.0`)
+- `ydotool` + `ydotoold` (pour le Shift+Insert)
+- `wl-copy` (pour le presse-papier Wayland)
+
+### Build
+
+```bash
+git clone https://github.com/sk7n4k3d/voxtype.git
+cd voxtype
+rustup run 1.88.0 cargo build --release --no-default-features
+sudo cp target/release/voxtype /usr/local/bin/voxtype
+```
+
+### Configuration
+
+Éditer `~/.config/voxtype/config.toml` :
+
+```toml
+[whisper]
+mode = "remote"
+remote_endpoint = "http://10.8.0.101:8300"
+remote_model = "deepdml/faster-whisper-large-v3-turbo-ct2"
+remote_timeout_secs = 30
+model = "large-v3-turbo"
+language = "fr"
+translate = false
+
+[output]
+mode = "type"
+fallback_to_clipboard = true
+type_delay_ms = 0
+```
+
+### Service systemd
+
+```bash
+mkdir -p ~/.config/systemd/user/
+cat << 'EOF' > ~/.config/systemd/user/voxtype.service
+[Unit]
+Description=Voxtype push-to-talk voice-to-text daemon (remote mode)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/voxtype daemon
+Restart=on-failure
+RestartSec=5
+Environment=XDG_RUNTIME_DIR=%t
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now voxtype
+```
+
+### Utilisation
+
+Appuyer sur **Scroll Lock**, parler, relâcher. Le texte transcrit est collé automatiquement à la position du curseur.
+
+---
+
+## Serveur Whisper (faster-whisper-server)
+
+Docker Compose pour le serveur de transcription :
+
+```yaml
+services:
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: whisper
+    ports:
+      - "8300:8000"
+    volumes:
+      - ./whisper-models:/root/.cache/huggingface
+    environment:
+      - WHISPER__MODEL=deepdml/faster-whisper-large-v3-turbo-ct2
+      - WHISPER__INFERENCE_DEVICE=cuda
+      - WHISPER__TTL=-1
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+```
+
+### Performances mesurées
+
+| Métrique | Valeur |
+|----------|--------|
+| Modèle | faster-whisper large-v3-turbo |
+| GPU | NVIDIA RTX 4060 (8 Go VRAM) |
+| VRAM utilisée | ~1.8 Go |
+| Latence (2s audio) | **0.34s** |
+| RTF (Real-Time Factor) | **33x temps réel** |
+| Langue | Français (fr) |
+
+---
+
+## Différences avec l'upstream
+
+| Fonctionnalité | Upstream | Ce fork |
+|----------------|----------|---------|
+| Whisper local | ✅ Obligatoire | ✅ Optionnel (feature flag) |
+| Whisper distant | ✅ Supporté | ✅ Optimisé (pas de model field si vide) |
+| Sortie texte KDE AZERTY | ❌ Cassé (ydotool type) | ✅ wl-copy + Shift+Insert |
+| Compilation sans whisper.cpp | ❌ | ✅ `--no-default-features` |
+
+---
+
+## Documentation upstream
 
 Push-to-talk voice-to-text for Linux. Optimized for Wayland, works on X11 too.
 
