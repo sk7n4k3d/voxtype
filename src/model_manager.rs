@@ -22,6 +22,7 @@ struct LoadedModel {
 }
 
 /// Manages multiple Whisper models with LRU eviction
+#[allow(dead_code)]
 pub struct ModelManager {
     /// Whisper configuration
     config: WhisperConfig,
@@ -94,12 +95,19 @@ impl ModelManager {
         }
 
         // For GPU isolation, always create fresh subprocess
+        #[cfg(feature = "local-whisper")]
         if self.config.gpu_isolation {
             return self.create_subprocess_transcriber(&model_name);
         }
 
         // For non-isolated local backend, use LRU cache
-        self.get_or_load_cached(&model_name)
+        #[cfg(feature = "local-whisper")]
+        return self.get_or_load_cached(&model_name);
+
+        #[cfg(not(feature = "local-whisper"))]
+        Err(TranscribeError::InitFailed(
+            "Local whisper transcription requested but voxtype was not compiled with --features local-whisper".to_string(),
+        ))
     }
 
     /// Create a remote transcriber with model override
@@ -124,6 +132,7 @@ impl ModelManager {
     }
 
     /// Create a subprocess transcriber for the specified model
+    #[cfg(feature = "local-whisper")]
     fn create_subprocess_transcriber(
         &self,
         model: &str,
@@ -136,6 +145,7 @@ impl ModelManager {
     }
 
     /// Get transcriber from cache or load on demand (non-isolated mode)
+    #[cfg(feature = "local-whisper")]
     fn get_or_load_cached(&mut self, model: &str) -> Result<Arc<dyn Transcriber>, TranscribeError> {
         // Check if already loaded
         if let Some(loaded) = self.loaded_models.get_mut(model) {
@@ -172,6 +182,7 @@ impl ModelManager {
     }
 
     /// Evict the least recently used non-primary model
+    #[cfg(feature = "local-whisper")]
     fn evict_lru(&mut self) {
         // Find LRU non-primary model
         let lru_model = self
@@ -236,9 +247,12 @@ impl ModelManager {
             return Ok(());
         }
 
-        let model = self.config.model.clone();
-        tracing::info!("Preloading primary model '{}'", model);
-        let _ = self.get_or_load_cached(&model)?;
+        #[cfg(feature = "local-whisper")]
+        {
+            let model = self.config.model.clone();
+            tracing::info!("Preloading primary model '{}'", model);
+            let _ = self.get_or_load_cached(&model)?;
+        }
         Ok(())
     }
 
@@ -261,6 +275,7 @@ impl ModelManager {
         }
 
         // For GPU isolation, spawn subprocess early
+        #[cfg(feature = "local-whisper")]
         if self.config.gpu_isolation && self.config.effective_mode() == WhisperMode::Local {
             // Create and prepare subprocess transcriber
             let transcriber = self.create_subprocess_transcriber(&model_name)?;

@@ -366,6 +366,7 @@ async fn main() -> anyhow::Result<()> {
             transcribe_file(&config, &file)?;
         }
 
+        #[cfg(feature = "local-whisper")]
         Commands::TranscribeWorker {
             model,
             language,
@@ -390,6 +391,10 @@ async fn main() -> anyhow::Result<()> {
                 whisper_config.threads = Some(t);
             }
             transcribe::worker::run_worker(&whisper_config)?;
+        }
+        #[cfg(not(feature = "local-whisper"))]
+        Commands::TranscribeWorker { .. } => {
+            anyhow::bail!("transcribe-worker requires the 'local-whisper' feature");
         }
 
         Commands::Setup {

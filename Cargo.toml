@@ -63,8 +63,8 @@ tempfile = "3"
 # Audio playback (for feedback sounds)
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 
-# Whisper speech-to-text
-whisper-rs = "0.15.1"
+# Whisper speech-to-text (optional, for local transcription)
+whisper-rs = { version = "0.15.1", optional = true }
 
 # Parakeet speech-to-text (optional, ONNX-based)
 parakeet-rs = { version = "0.3", optional = true }
@@ -90,11 +90,13 @@ chrono = { version = "0.4", features = ["serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 [features]
-default = []
-gpu-vulkan = ["whisper-rs/vulkan"]
-gpu-cuda = ["whisper-rs/cuda"]
-gpu-metal = ["whisper-rs/metal"]
-gpu-hipblas = ["whisper-rs/hipblas"]
+default = ["local-whisper"]
+# Local whisper.cpp transcription (via whisper-rs FFI bindings)
+local-whisper = ["dep:whisper-rs"]
+gpu-vulkan = ["local-whisper", "whisper-rs/vulkan"]
+gpu-cuda = ["local-whisper", "whisper-rs/cuda"]
+gpu-metal = ["local-whisper", "whisper-rs/metal"]
+gpu-hipblas = ["local-whisper", "whisper-rs/hipblas"]
 # ML-based speaker diarization (uses ONNX for embedding extraction)
 ml-diarization = ["dep:ort", "dep:ndarray"]
 # Parakeet backend (ONNX-based, alternative to Whisper)

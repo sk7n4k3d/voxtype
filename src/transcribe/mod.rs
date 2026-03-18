@@ -14,8 +14,10 @@
 
 pub mod cli;
 pub mod remote;
+#[cfg(feature = "local-whisper")]
 pub mod subprocess;
 pub mod whisper;
+#[cfg(feature = "local-whisper")]
 pub mod worker;
 
 /// Shared log-mel filterbank feature extraction for ONNX-based ASR engines
@@ -56,6 +58,7 @@ pub mod omnilingual;
 
 use crate::config::{Config, TranscriptionEngine, WhisperConfig, WhisperMode};
 use crate::error::TranscribeError;
+#[cfg(feature = "local-whisper")]
 use crate::setup::gpu;
 
 /// Trait for speech-to-text implementations
@@ -187,12 +190,14 @@ pub fn create_whisper_transcriber(
 
 /// Factory function to create transcriber with optional config path
 /// The config path is passed to subprocess transcriber for isolated GPU execution
+#[allow(unused_variables)]
 pub fn create_transcriber_with_config_path(
     config: &WhisperConfig,
     config_path: Option<std::path::PathBuf>,
 ) -> Result<Box<dyn Transcriber>, TranscribeError> {
     // Apply GPU selection from VOXTYPE_VULKAN_DEVICE environment variable
     // This sets VK_LOADER_DRIVERS_SELECT to filter Vulkan drivers
+    #[cfg(feature = "local-whisper")]
     if let Some(vendor) = gpu::apply_gpu_selection() {
         tracing::info!(
             "GPU selection: {} (via VOXTYPE_VULKAN_DEVICE)",
@@ -201,6 +206,7 @@ pub fn create_transcriber_with_config_path(
     }
 
     match config.effective_mode() {
+        #[cfg(feature = "local-whisper")]
         WhisperMode::Local => {
             if config.gpu_isolation {
                 tracing::info!(
@@ -215,6 +221,10 @@ pub fn create_transcriber_with_config_path(
                 Ok(Box::new(whisper::WhisperTranscriber::new(config)?))
             }
         }
+        #[cfg(not(feature = "local-whisper"))]
+        WhisperMode::Local => Err(TranscribeError::InitFailed(
+            "Local whisper transcription requested but voxtype was not compiled with --features local-whisper".to_string(),
+        )),
         WhisperMode::Remote => {
             tracing::info!("Using remote whisper transcription mode");
             Ok(Box::new(remote::RemoteTranscriber::new(config)?))

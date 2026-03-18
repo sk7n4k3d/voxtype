@@ -71,7 +71,8 @@ impl RemoteTranscriber {
         let model = config
             .remote_model
             .clone()
-            .unwrap_or_else(|| "whisper-1".to_string());
+            .or_else(|| std::env::var("VOXTYPE_REMOTE_MODEL").ok())
+            .unwrap_or_default();
 
         let timeout = Duration::from_secs(config.remote_timeout_secs.unwrap_or(30));
 
@@ -152,11 +153,13 @@ impl RemoteTranscriber {
         body.extend_from_slice(wav_data);
         body.extend_from_slice(b"\r\n");
 
-        // Add model field
-        body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-        body.extend_from_slice(b"Content-Disposition: form-data; name=\"model\"\r\n\r\n");
-        body.extend_from_slice(self.model.as_bytes());
-        body.extend_from_slice(b"\r\n");
+        // Add model field (only if non-empty)
+        if false && !self.model.is_empty() {
+            body.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            body.extend_from_slice(b"Content-Disposition: form-data; name=\"model\"\r\n\r\n");
+            body.extend_from_slice(self.model.as_bytes());
+            body.extend_from_slice(b"\r\n");
+        }
 
         // Add language field (if not auto-detect mode)
         // For language arrays, use the primary language since remote APIs don't support arrays

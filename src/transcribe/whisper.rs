@@ -6,14 +6,22 @@
 //! - Single language: Use a specific language for transcription
 //! - Auto-detect: Let Whisper detect from all ~99 supported languages
 //! - Constrained auto-detect: Detect from a user-specified subset of languages
+//!
+//! When compiled without the `local-whisper` feature, only the model path
+//! resolution and URL utilities are available (used by setup/model download).
 
+#[cfg(feature = "local-whisper")]
 use super::Transcriber;
-use crate::config::{Config, LanguageConfig, WhisperConfig};
+use crate::config::Config;
+#[cfg(feature = "local-whisper")]
+use crate::config::{LanguageConfig, WhisperConfig};
 use crate::error::TranscribeError;
 use std::path::PathBuf;
+#[cfg(feature = "local-whisper")]
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 /// Whisper-based transcriber
+#[cfg(feature = "local-whisper")]
 pub struct WhisperTranscriber {
     /// Whisper context (holds the model)
     ctx: WhisperContext,
@@ -29,6 +37,7 @@ pub struct WhisperTranscriber {
     initial_prompt: Option<String>,
 }
 
+#[cfg(feature = "local-whisper")]
 impl WhisperTranscriber {
     /// Create a new whisper transcriber
     pub fn new(config: &WhisperConfig) -> Result<Self, TranscribeError> {
@@ -120,6 +129,7 @@ impl WhisperTranscriber {
     }
 }
 
+#[cfg(feature = "local-whisper")]
 impl Transcriber for WhisperTranscriber {
     fn transcribe(&self, samples: &[f32]) -> Result<String, TranscribeError> {
         if samples.is_empty() {
@@ -241,7 +251,7 @@ impl Transcriber for WhisperTranscriber {
 }
 
 /// Resolve model name to file path
-fn resolve_model_path(model: &str) -> Result<PathBuf, TranscribeError> {
+pub fn resolve_model_path(model: &str) -> Result<PathBuf, TranscribeError> {
     // If it's already an absolute path, use it directly
     let path = PathBuf::from(model);
     if path.is_absolute() && path.exists() {
@@ -302,7 +312,7 @@ fn resolve_model_path(model: &str) -> Result<PathBuf, TranscribeError> {
     )))
 }
 
-/// Calculate audio_ctx parameter for short clips (≤22.5s).
+/// Calculate audio_ctx parameter for short clips (<=22.5s).
 /// Formula: max(duration_seconds * 50 + 128, 384), rounded up to multiple of 8
 ///
 /// This optimization reduces transcription time for short recordings by
@@ -313,6 +323,7 @@ fn resolve_model_path(model: &str) -> Result<PathBuf, TranscribeError> {
 /// - Increased padding (128 instead of 64) for stability
 /// - Minimum threshold of 384 (~7.7s context) to avoid instability with very short clips
 /// - Alignment to multiple of 8 for GPU backend compatibility (Metal, Vulkan)
+#[cfg(feature = "local-whisper")]
 fn calculate_audio_ctx(duration_secs: f32) -> Option<i32> {
     const MIN_AUDIO_CTX: i32 = 384; // ~7.7s minimum context
 
@@ -366,6 +377,7 @@ mod tests {
         assert!(url.contains("huggingface.co"));
     }
 
+    #[cfg(feature = "local-whisper")]
     #[test]
     fn test_calculate_audio_ctx_short_clips() {
         // Very short clips use minimum threshold (384), aligned to 8
@@ -382,6 +394,7 @@ mod tests {
         assert_eq!(calculate_audio_ctx(22.5), Some(1256));
     }
 
+    #[cfg(feature = "local-whisper")]
     #[test]
     fn test_calculate_audio_ctx_long_clips() {
         // Just over threshold: no optimization
@@ -394,6 +407,7 @@ mod tests {
         assert_eq!(calculate_audio_ctx(60.0), None);
     }
 
+    #[cfg(feature = "local-whisper")]
     #[test]
     fn test_audio_ctx_not_applied_when_disabled() {
         // When context_window_optimization is false, calculate_audio_ctx
@@ -423,6 +437,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "local-whisper")]
     #[test]
     fn test_audio_ctx_alignment() {
         // Verify all results are aligned to multiple of 8 for GPU compatibility

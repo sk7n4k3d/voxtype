@@ -8,6 +8,7 @@
 //! - **Whisper VAD**: Silero model via whisper-rs, more accurate, requires model download
 
 mod energy;
+#[cfg(feature = "local-whisper")]
 mod whisper_vad;
 
 use crate::config::{Config, TranscriptionEngine, VadBackend};
@@ -15,6 +16,7 @@ use crate::error::VadError;
 use std::path::PathBuf;
 
 pub use energy::EnergyVad;
+#[cfg(feature = "local-whisper")]
 pub use whisper_vad::WhisperVad;
 
 /// Result of voice activity detection
@@ -73,10 +75,17 @@ pub fn create_vad(config: &Config) -> Result<Option<Box<dyn VoiceActivityDetecto
             tracing::info!("Using Energy VAD backend");
             Box::new(EnergyVad::new(&config.vad))
         }
+        #[cfg(feature = "local-whisper")]
         VadBackend::Whisper => {
             let model_path = resolve_whisper_vad_model_path(&config.vad)?;
             tracing::info!("Using Whisper VAD backend with model {:?}", model_path);
             Box::new(WhisperVad::new(&model_path, &config.vad)?)
+        }
+        #[cfg(not(feature = "local-whisper"))]
+        VadBackend::Whisper => {
+            return Err(VadError::InitFailed(
+                "Whisper VAD requested but voxtype was not compiled with --features local-whisper. Use backend = \"energy\" instead.".to_string(),
+            ));
         }
     };
 
@@ -84,6 +93,7 @@ pub fn create_vad(config: &Config) -> Result<Option<Box<dyn VoiceActivityDetecto
 }
 
 /// Resolve the path to the Whisper VAD model
+#[cfg(feature = "local-whisper")]
 fn resolve_whisper_vad_model_path(config: &crate::config::VadConfig) -> Result<PathBuf, VadError> {
     // If model path is explicitly configured, use it
     if let Some(ref model) = config.model {

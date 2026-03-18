@@ -113,19 +113,25 @@ impl TextOutput for YdotoolOutput {
             tokio::time::sleep(Duration::from_millis(self.pre_type_delay_ms as u64)).await;
         }
 
-        let mut cmd = Command::new("ydotool");
-        cmd.arg("type");
-
-        // Always set delay explicitly (ydotool defaults to 12ms if not specified)
-        cmd.arg("--key-delay").arg(self.type_delay_ms.to_string());
-
-        // Use --key-hold only if supported (older versions silently ignore unknown flags)
-        if self.supports_key_hold {
-            cmd.arg("--key-hold").arg(self.type_delay_ms.to_string());
+        // Copy to clipboard then paste via Shift+Insert (works on KDE Wayland + AZERTY)
+        let mut wl_copy = Command::new("wl-copy");
+        wl_copy.arg("--").arg(text);
+        let wl_status = wl_copy
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .map_err(|e| OutputError::InjectionFailed(format!("wl-copy failed: {}", e)))?;
+        if !wl_status.success() {
+            return Err(OutputError::InjectionFailed("wl-copy failed".to_string()));
         }
 
-        // The -- ensures text starting with - isn't treated as an option
-        cmd.arg("--").arg(text);
+        // Small delay to ensure clipboard is set
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Shift+Insert to paste (keycodes: Shift=42, Insert=110)
+        let mut cmd = Command::new("ydotool");
+        cmd.arg("key").arg("42:1").arg("110:1").arg("110:0").arg("42:0");
 
         tracing::debug!(
             "Running: ydotool type --key-delay {} {} -- \"{}\"",
